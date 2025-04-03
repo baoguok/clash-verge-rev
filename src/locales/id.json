@@ -64,7 +64,7 @@
   "global": "global",
   "direct": "langsung",
   "script": "skrip",
-  "Location": "Lokasi",
+  "locate": "Lokasi",
   "Delay check": "Periksa Keterlambatan",
   "Sort by default": "Urutkan secara default",
   "Sort by delay": "Urutkan berdasarkan keterlambatan",
@@ -432,8 +432,8 @@
   "Restore Success, App will restart in 1s": "Pemulihan Berhasil, Aplikasi akan dimulai ulang dalam 1 detik",
   "Failed to fetch backup files": "Gagal mengambil file cadangan",
   "Enable Tray Speed": "Aktifkan Tray Speed",
-  "Lite Mode": "Mode Ringan",
-  "Lite Mode Info": "Tutup GUI dan biarkan hanya kernel yang berjalan",
+  "LightWeight Mode": "Mode Ringan",
+  "LightWeight Mode Info": "Tutup GUI dan biarkan hanya kernel yang berjalan",
   "Config Validation Failed": "Validasi konfigurasi langganan gagal, periksa file konfigurasi, perubahan dibatalkan, detail kesalahan:",
   "Boot Config Validation Failed": "Validasi konfigurasi saat boot gagal, menggunakan konfigurasi default, periksa file konfigurasi, detail kesalahan:",
   "Core Change Config Validation Failed": "Validasi konfigurasi saat ganti inti gagal, menggunakan konfigurasi default, periksa file konfigurasi, detail kesalahan:",
@@ -445,5 +445,9 @@
   "Core Changed Successfully": "Inti berhasil diubah",
   "Failed to Change Core": "Gagal mengubah inti",
   "Verge Basic Setting": "Pengaturan Dasar Verge",
-  "Verge Advanced Setting": "Pengaturan Lanjutan Verge"
+  "Verge Advanced Setting": "Pengaturan Lanjutan Verge",
+  "TUN requires Service Mode": "Mode TUN memerlukan layanan",
+  "Install Service": "Instal Layanan",
+  "Installing Service...": "Memasang Layanan...",
+  "Service Administrator Prompt": "Clash Verge memerlukan hak administrator untuk menginstal ulang layanan sistem"
 }

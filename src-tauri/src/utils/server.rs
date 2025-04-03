@@ -1,8 +1,11 @@
 extern crate warp;
 
 use super::resolve;
-use crate::config::{Config, IVerge, DEFAULT_PAC};
-use crate::log_err;
+use crate::{
+    config::{Config, IVerge, DEFAULT_PAC},
+    logging_error,
+    utils::logging::Type,
+};
 use anyhow::{bail, Result};
 use port_scanner::local_port_available;
 use std::convert::Infallible;
@@ -67,7 +70,11 @@ pub fn embed_server() {
                 .unwrap_or_default()
         });
         async fn scheme_handler(query: QueryParam) -> Result<impl warp::Reply, Infallible> {
-            log_err!(resolve::resolve_scheme(query.param).await);
+            logging_error!(
+                Type::Setup,
+                true,
+                resolve::resolve_scheme(query.param).await
+            );
             Ok("ok")
         }
 

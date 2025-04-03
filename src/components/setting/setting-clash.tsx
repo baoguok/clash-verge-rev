@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { TextField, Select, MenuItem, Typography } from "@mui/material";
 import {
@@ -20,6 +20,10 @@ import { useVerge } from "@/hooks/use-verge";
 import { updateGeoData } from "@/services/api";
 import { TooltipIcon } from "@/components/base/base-tooltip-icon";
 import { NetworkInterfaceViewer } from "./mods/network-interface-viewer";
+import { DnsViewer } from "./mods/dns-viewer";
+import { invoke } from "@tauri-apps/api/core";
+import { useLockFn } from "ahooks";
+import { useListen } from "@/hooks/use-listen";
 
 const isWIN = getSystem() === "windows";
 
@@ -38,15 +42,30 @@ const SettingClash = ({ onError }: Props) => {
     "allow-lan": allowLan,
     "log-level": logLevel,
     "unified-delay": unifiedDelay,
+    dns,
   } = clash ?? {};
 
   const { enable_random_port = false, verge_mixed_port } = verge ?? {};
+
+  // 独立跟踪DNS设置开关状态
+  const [dnsSettingsEnabled, setDnsSettingsEnabled] = useState(() => {
+    // 尝试从localStorage获取之前保存的状态
+    const savedState = localStorage.getItem("dns_settings_enabled");
+    if (savedState !== null) {
+      return savedState === "true";
+    }
+    // 如果没有保存的状态，则从verge配置中获取
+    return verge?.enable_dns_settings ?? false;
+  });
+  
+  const { addListener } = useListen();
 
   const webRef = useRef<DialogRef>(null);
   const portRef = useRef<DialogRef>(null);
   const ctrlRef = useRef<DialogRef>(null);
   const coreRef = useRef<DialogRef>(null);
   const networkRef = useRef<DialogRef>(null);
+  const dnsRef = useRef<DialogRef>(null);
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
   const onChangeData = (patch: Partial<IConfigData>) => {
@@ -64,6 +83,31 @@ const SettingClash = ({ onError }: Props) => {
     }
   };
 
+  // 实现DNS设置开关处理函数
+  const handleDnsToggle = useLockFn(async (enable: boolean) => {
+    try {
+      // 立即更新UI状态
+      setDnsSettingsEnabled(enable);
+      // 保存到localStorage，用于记住用户的选择
+      localStorage.setItem("dns_settings_enabled", String(enable));
+      // 更新verge配置
+      await patchVerge({ enable_dns_settings: enable });
+      await invoke("apply_dns_config", { apply: enable });
+      setTimeout(() => {
+        mutateClash();
+      }, 500); // 延迟500ms确保后端完成处理
+    } catch (err: any) {
+      // 如果出错，恢复原始状态
+      setDnsSettingsEnabled(!enable);
+      localStorage.setItem("dns_settings_enabled", String(!enable));
+      Notice.error(err.message || err.toString());
+      await patchVerge({ enable_dns_settings: !enable }).catch(() => {
+        // 忽略恢复状态时的错误
+      });
+      throw err;
+    }
+  });
+
   return (
     <SettingList title={t("Clash Setting")}>
       <WebUIViewer ref={webRef} />
@@ -71,6 +115,7 @@ const SettingClash = ({ onError }: Props) => {
       <ControllerViewer ref={ctrlRef} />
       <ClashCoreViewer ref={coreRef} />
       <NetworkInterfaceViewer ref={networkRef} />
+      <DnsViewer ref={dnsRef} />
 
       <SettingItem
         label={t("Allow Lan")}
@@ -95,6 +140,22 @@ const SettingClash = ({ onError }: Props) => {
         >
           <Switch edge="end" />
         </GuardState>
+      </SettingItem>
+
+      <SettingItem
+        label={t("DNS Overwrite")}
+        extra={
+          <TooltipIcon
+            icon={SettingsRounded}
+            onClick={() => dnsRef.current?.open()}
+          />
+        }
+      >
+        <Switch
+          edge="end"
+          checked={dnsSettingsEnabled}
+          onChange={(_, checked) => handleDnsToggle(checked)}
+        />
       </SettingItem>
 
       <SettingItem label={t("IPv6")}>

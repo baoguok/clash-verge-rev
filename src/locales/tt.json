@@ -32,7 +32,7 @@
   "global": "глобаль",
   "direct": "туры",
   "script": "скриптлы",
-  "Location": "Урын",
+  "locate": "Урын",
   "Delay check": "Задержканы тикшерү",
   "Sort by default": "Башлангыч итеп сортлау",
   "Sort by delay": "Задержка буенча сортлау",
@@ -432,8 +432,8 @@
   "Global Mode": "Глобаль режим",
   "Direct Mode": "Туры режим",
   "Enable Tray Speed": "Трей скоростьне үстерү",
-  "Lite Mode": "Җиңел Режим",
-  "Lite Mode Info": "GUI-ны ябыгыз һәм бары тик төшне генә эшләтеп калдырыгыз",
+  "LightWeight Mode": "Җиңел Режим",
+  "LightWeight Mode Info": "GUI-ны ябыгыз һәм бары тик төшне генә эшләтеп калдырыгыз",
   "Config Validation Failed": "Язылу көйләү тикшерүе уңышсыз, көйләү файлын тикшерегез, үзгәрешләр кире кайтарылды, хата:",
   "Boot Config Validation Failed": "Йөкләү вакытында көйләү тикшерүе уңышсыз, стандарт көйләү кулланылды, көйләү файлын тикшерегез, хата:",
   "Core Change Config Validation Failed": "Ядро алыштырганда көйләү тикшерүе уңышсыз, стандарт көйләү кулланылды, көйләү файлын тикшерегез, хата:",
@@ -445,5 +445,9 @@
   "Core Changed Successfully": "Ядро уңышлы алыштырылды",
   "Failed to Change Core": "Ядро алыштыру уңышсыз булды",
   "Verge Basic Setting": "Verge Төп көйләүләр",
-  "Verge Advanced Setting": "Verge Киңәйтелгән көйләүләр"
+  "Verge Advanced Setting": "Verge Киңәйтелгән көйләүләр",
+  "TUN requires Service Mode": "TUN режимы хезмәт күрсәтүне таләп итә",
+  "Install Service": "Хезмәтне урнаштыру",
+  "Installing Service...": "Хезмәт урнаштырыла...",
+  "Service Administrator Prompt": "Clash Verge система хезмәтен яңадан урнаштыру өчен администратор хокукларын таләп итә"
 }

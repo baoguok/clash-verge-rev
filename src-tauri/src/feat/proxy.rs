@@ -1,6 +1,7 @@
-use crate::config::Config;
-use crate::config::IVerge;
-use crate::core::handle;
+use crate::{
+    config::{Config, IVerge},
+    core::handle,
+};
 use std::env;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -27,6 +28,19 @@ pub fn toggle_system_proxy() {
 
 /// Toggle TUN mode on/off
 pub fn toggle_tun_mode(not_save_file: Option<bool>) {
+    // tauri::async_runtime::spawn(async move {
+    //     logging!(
+    //         info,
+    //         Type::Service,
+    //         true,
+    //         "Toggle TUN mode need install service"
+    //     );
+    //     if is_service_available().await.is_err() {
+    //         logging_error!(Type::Service, true, install_service().await);
+    //     }
+    //     logging_error!(Type::Core, true, CoreManager::global().restart_core().await);
+    // });
+
     let enable = Config::verge().data().enable_tun_mode;
     let enable = enable.unwrap_or(false);
 
@@ -57,13 +71,6 @@ pub fn copy_clash_env() {
     let http_proxy = format!("http://{clash_verge_rev_ip}:{}", port);
     let socks5_proxy = format!("socks5://{clash_verge_rev_ip}:{}", port);
 
-    let sh =
-        format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
-    let cmd: String = format!("set http_proxy={http_proxy}\r\nset https_proxy={http_proxy}");
-    let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
-    let nu: String =
-        format!("load-env {{ http_proxy: \"{http_proxy}\", https_proxy: \"{http_proxy}\" }}");
-
     let cliboard = app_handle.clipboard();
     let env_type = { Config::verge().latest().env_type.clone() };
     let env_type = match env_type {
@@ -77,11 +84,26 @@ pub fn copy_clash_env() {
             default.to_string()
         }
     };
-    match env_type.as_str() {
-        "bash" => cliboard.write_text(sh).unwrap_or_default(),
-        "cmd" => cliboard.write_text(cmd).unwrap_or_default(),
-        "powershell" => cliboard.write_text(ps).unwrap_or_default(),
-        "nushell" => cliboard.write_text(nu).unwrap_or_default(),
-        _ => log::error!(target: "app", "copy_clash_env: Invalid env type! {env_type}"),
+
+    let export_text = match env_type.as_str() {
+        "bash" => format!(
+            "export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}"
+        ),
+        "cmd" => format!("set http_proxy={http_proxy}\r\nset https_proxy={http_proxy}"),
+        "powershell" => {
+            format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"")
+        }
+        "nushell" => {
+            format!("load-env {{ http_proxy: \"{http_proxy}\", https_proxy: \"{http_proxy}\" }}")
+        }
+        "fish" => format!("set -x http_proxy {http_proxy}; set -x https_proxy {http_proxy}"),
+        _ => {
+            log::error!(target: "app", "copy_clash_env: Invalid env type! {env_type}");
+            return;
+        }
     };
+
+    if cliboard.write_text(export_text).is_err() {
+        log::error!(target: "app", "Failed to write to clipboard");
+    }
 }

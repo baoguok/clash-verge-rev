@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Typography } from "@mui/material";
 import {
@@ -7,6 +7,7 @@ import {
   openCoreDir,
   openLogsDir,
   openDevTools,
+  exportDiagnosticInfo,
 } from "@/services/cmds";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { useVerge } from "@/hooks/use-verge";
@@ -20,7 +21,9 @@ import { ThemeViewer } from "./mods/theme-viewer";
 import { LayoutViewer } from "./mods/layout-viewer";
 import { UpdateViewer } from "./mods/update-viewer";
 import { BackupViewer } from "./mods/backup-viewer";
+import { LiteModeViewer } from "./mods/lite-mode-viewer";
 import { TooltipIcon } from "@/components/base/base-tooltip-icon";
+import { ContentCopyRounded } from "@mui/icons-material";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -37,6 +40,7 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
   const layoutRef = useRef<DialogRef>(null);
   const updateRef = useRef<DialogRef>(null);
   const backupRef = useRef<DialogRef>(null);
+  const liteModeRef = useRef<DialogRef>(null);
 
   const onCheckUpdate = async () => {
     try {
@@ -51,6 +55,11 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
     }
   };
 
+  const onExportDiagnosticInfo = useCallback(async () => {
+    await exportDiagnosticInfo();
+    Notice.success(t("Copy Success"), 1000);
+  }, []);
+
   return (
     <SettingList title={t("Verge Advanced Setting")}>
       <ThemeViewer ref={themeRef} />
@@ -60,6 +69,7 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
       <LayoutViewer ref={layoutRef} />
       <UpdateViewer ref={updateRef} />
       <BackupViewer ref={backupRef} />
+      <LiteModeViewer ref={liteModeRef} />
 
       <SettingItem
         onClick={() => backupRef.current?.open()}
@@ -97,11 +107,11 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
       <SettingItem onClick={openDevTools} label={t("Open Dev Tools")} />
 
       <SettingItem
-        label={t("Lite Mode")}
+        label={t("LightWeight Mode Settings")}
         extra={
-          <TooltipIcon title={t("Lite Mode Info")} sx={{ opacity: "0.7" }} />
+          <TooltipIcon title={t("LightWeight Mode Info")} sx={{ opacity: "0.7" }} />
         }
-        onClick={() => patchVerge({ enable_lite_mode: true })}
+        onClick={() => liteModeRef.current?.open()}
       />
 
       <SettingItem
@@ -110,6 +120,16 @@ const SettingVergeAdvanced = ({ onError }: Props) => {
         }}
         label={t("Exit")}
       />
+
+      <SettingItem
+        label={t("Export Diagnostic Info")}
+        extra={
+          <TooltipIcon
+            icon={ContentCopyRounded}
+            onClick={onExportDiagnosticInfo}
+          />
+        }
+      ></SettingItem>
 
       <SettingItem label={t("Verge Version")}>
         <Typography sx={{ py: "7px", pr: 1 }}>v{version}</Typography>

@@ -1,7 +1,7 @@
-use crate::config::DEFAULT_PAC;
-use crate::config::{deserialize_encrypted, serialize_encrypted};
-use crate::utils::i18n;
-use crate::utils::{dirs, help};
+use crate::{
+    config::{deserialize_encrypted, serialize_encrypted, DEFAULT_PAC},
+    utils::{dirs, help, i18n},
+};
 use anyhow::Result;
 use log::LevelFilter;
 use serde::{Deserialize, Serialize};
@@ -70,6 +70,9 @@ pub struct IVerge {
     /// enable proxy guard
     pub enable_proxy_guard: Option<bool>,
 
+    /// enable dns settings - this controls whether dns_config.yaml is applied
+    pub enable_dns_settings: Option<bool>,
+
     /// always use default bypass
     pub use_default_bypass: Option<bool>,
 
@@ -98,9 +101,13 @@ pub struct IVerge {
     /// hotkey map
     /// format: {func},{key}
     pub hotkeys: Option<Vec<String>>,
-    
+
     /// enable global hotkey
     pub enable_global_hotkey: Option<bool>,
+
+    /// 首页卡片设置
+    /// 控制首页各个卡片的显示和隐藏
+    pub home_cards: Option<serde_json::Value>,
 
     /// 切换代理时自动关闭连接
     pub auto_close_connection: Option<bool>,
@@ -182,8 +189,16 @@ pub struct IVerge {
 
     pub enable_tray_speed: Option<bool>,
 
-    /// 轻量模式 - 只保留内核运行
-    pub enable_lite_mode: Option<bool>,
+    pub enable_tray_icon: Option<bool>,
+
+    /// 自动进入轻量模式
+    pub enable_auto_light_weight_mode: Option<bool>,
+
+    /// 自动进入轻量模式的延迟（分钟）
+    pub auto_light_weight_minutes: Option<u64>,
+
+    /// 服务状态跟踪
+    pub service_state: Option<crate::core::service::ServiceState>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -245,7 +260,7 @@ impl IVerge {
             env_type: Some("bash".into()),
             #[cfg(target_os = "windows")]
             env_type: Some("powershell".into()),
-            start_page: Some("/".into()),
+            start_page: Some("/home".into()),
             traffic_graph: Some(true),
             enable_memory_usage: Some(true),
             enable_group_icon: Some(true),
@@ -285,8 +300,13 @@ impl IVerge {
             webdav_username: None,
             webdav_password: None,
             enable_tray_speed: Some(true),
+            enable_tray_icon: Some(true),
             enable_global_hotkey: Some(true),
-            enable_lite_mode: Some(false),
+            enable_auto_light_weight_mode: Some(false),
+            auto_light_weight_minutes: Some(10),
+            enable_dns_settings: Some(true),
+            home_cards: None,
+            service_state: None,
             ..Self::default()
         }
     }
@@ -368,7 +388,12 @@ impl IVerge {
         patch!(webdav_username);
         patch!(webdav_password);
         patch!(enable_tray_speed);
-        patch!(enable_lite_mode);
+        patch!(enable_tray_icon);
+        patch!(enable_auto_light_weight_mode);
+        patch!(auto_light_weight_minutes);
+        patch!(enable_dns_settings);
+        patch!(home_cards);
+        patch!(service_state);
     }
 
     /// 在初始化前尝试拿到单例端口的值
@@ -457,7 +482,12 @@ pub struct IVergeResponse {
     pub webdav_username: Option<String>,
     pub webdav_password: Option<String>,
     pub enable_tray_speed: Option<bool>,
-    pub enable_lite_mode: Option<bool>,
+    pub enable_tray_icon: Option<bool>,
+    pub enable_auto_light_weight_mode: Option<bool>,
+    pub auto_light_weight_minutes: Option<u64>,
+    pub enable_dns_settings: Option<bool>,
+    pub home_cards: Option<serde_json::Value>,
+    pub service_state: Option<crate::core::service::ServiceState>,
 }
 
 impl From<IVerge> for IVergeResponse {
@@ -520,7 +550,12 @@ impl From<IVerge> for IVergeResponse {
             webdav_username: verge.webdav_username,
             webdav_password: verge.webdav_password,
             enable_tray_speed: verge.enable_tray_speed,
-            enable_lite_mode: verge.enable_lite_mode,
+            enable_tray_icon: verge.enable_tray_icon,
+            enable_auto_light_weight_mode: verge.enable_auto_light_weight_mode,
+            auto_light_weight_minutes: verge.auto_light_weight_minutes,
+            enable_dns_settings: verge.enable_dns_settings,
+            home_cards: verge.home_cards,
+            service_state: verge.service_state,
         }
     }
 }

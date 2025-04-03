@@ -1,4 +1,3 @@
-import dayjs from "dayjs";
 import { invoke } from "@tauri-apps/api/core";
 import { Notice } from "@/components/base";
 
@@ -37,10 +36,10 @@ export async function saveProfileFile(index: string, fileData: string) {
   return invoke<void>("save_profile_file", { index, fileData });
 }
 
-export async function importProfile(url: string) {
+export async function importProfile(url: string, option?: IProfileOption) {
   return invoke<void>("import_profile", {
     url,
-    option: { with_proxy: true },
+    option: option || { with_proxy: true },
   });
 }
 
@@ -118,6 +117,16 @@ export async function getAutotemProxy() {
   }>("get_auto_proxy");
 }
 
+export async function getAutoLaunchStatus() {
+  try {
+    return await invoke<boolean>("get_auto_launch_status");
+  } catch (error) {
+    console.error("获取自启动状态失败:", error);
+    // 出错时返回false作为默认值
+    return false;
+  }
+}
+
 export async function changeClashCore(clashCore: string) {
   return invoke<string | null>("change_clash_core", { clashCore });
 }
@@ -161,12 +170,42 @@ export async function cmdGetProxyDelay(
   timeout: number,
   url?: string,
 ) {
-  name = encodeURIComponent(name);
-  return invoke<{ delay: number }>("clash_api_get_proxy_delay", {
-    name,
-    url,
-    timeout,
-  });
+  // 确保URL不为空
+  const testUrl = url || "http://cp.cloudflare.com/generate_204";
+  console.log(
+    `[API] 调用延迟测试API，代理: ${name}, 超时: ${timeout}ms, URL: ${testUrl}`,
+  );
+
+  try {
+    name = encodeURIComponent(name);
+    const result = await invoke<{ delay: number }>(
+      "clash_api_get_proxy_delay",
+      {
+        name,
+        url: testUrl, // 传递经过验证的URL
+        timeout,
+      },
+    );
+
+    // 验证返回结果中是否有delay字段，并且值是一个有效的数字
+    if (result && typeof result.delay === "number") {
+      console.log(
+        `[API] 延迟测试API调用成功，代理: ${name}, 延迟: ${result.delay}ms`,
+      );
+      return result;
+    } else {
+      console.error(
+        `[API] 延迟测试API返回无效结果，代理: ${name}, 结果:`,
+        result,
+      );
+      // 返回一个有效的结果对象，但标记为超时
+      return { delay: 1e6 };
+    }
+  } catch (error) {
+    console.error(`[API] 延迟测试API调用失败，代理: ${name}`, error);
+    // 返回一个有效的结果对象，但标记为错误
+    return { delay: 1e6 };
+  }
 }
 
 export async function cmdTestDelay(url: string) {
@@ -191,11 +230,31 @@ export async function exitApp() {
   return invoke("exit_app");
 }
 
+export async function exportDiagnosticInfo() {
+  return invoke("export_diagnostic_info");
+}
+
+export async function getSystemInfo() {
+  return invoke<string>("get_system_info");
+}
+
 export async function copyIconFile(
   path: string,
   name: "common" | "sysproxy" | "tun",
 ) {
-  return invoke<void>("copy_icon_file", { path, name });
+  const key = `icon_${name}_update_time`;
+  const previousTime = localStorage.getItem(key) || "";
+
+  const currentTime = String(Date.now());
+  localStorage.setItem(key, currentTime);
+
+  const iconInfo = {
+    name,
+    previous_t: previousTime,
+    current_t: currentTime,
+  };
+
+  return invoke<void>("copy_icon_file", { path, iconInfo });
 }
 
 export async function downloadIconCache(url: string, name: string) {
@@ -249,3 +308,50 @@ export async function scriptValidateNotice(status: string, msg: string) {
 export async function validateScriptFile(filePath: string) {
   return invoke<boolean>("validate_script_file", { filePath });
 }
+
+// 获取当前运行模式
+export const getRunningMode = async () => {
+  return invoke<string>("get_running_mode");
+};
+
+// 获取应用运行时间
+export const getAppUptime = async () => {
+  return invoke<number>("get_app_uptime");
+};
+
+// 安装系统服务
+export const installService = async () => {
+  return invoke<void>("install_service");
+};
+
+// 卸载系统服务
+export const uninstallService = async () => {
+  return invoke<void>("uninstall_service");
+};
+
+// 重装系统服务
+export const reinstallService = async () => {
+  return invoke<void>("reinstall_service");
+};
+
+// 修复系统服务
+export const repairService = async () => {
+  return invoke<void>("repair_service");
+};
+
+export const entry_lightweight_mode = async () => {
+  return invoke<void>("entry_lightweight_mode");
+};
+
+export const exit_lightweight_mode = async () => {
+  return invoke<void>("exit_lightweight_mode");
+};
+
+export const isAdmin = async () => {
+  try {
+    return await invoke<boolean>("is_admin");
+  } catch (error) {
+    console.error("检查管理员权限失败:", error);
+    return false;
+  }
+};

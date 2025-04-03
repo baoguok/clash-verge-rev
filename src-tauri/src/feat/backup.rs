@@ -1,7 +1,9 @@
-use crate::config::{Config, IVerge};
-use crate::core::backup;
-use crate::log_err;
-use crate::utils::dirs::app_home_dir;
+use crate::{
+    config::{Config, IVerge},
+    core::backup,
+    logging_error,
+    utils::{dirs::app_home_dir, logging::Type},
+};
 use anyhow::Result;
 use reqwest_dav::list_cmd::ListFile;
 use std::fs;
@@ -67,8 +69,9 @@ pub async fn restore_webdav_backup(filename: String) -> Result<()> {
     // extract zip file
     let mut zip = zip::ZipArchive::new(fs::File::open(backup_storage_path.clone())?)?;
     zip.extract(app_home_dir()?)?;
-
-    log_err!(
+    logging_error!(
+        Type::Backup,
+        true,
         super::patch_verge(
             IVerge {
                 webdav_url,

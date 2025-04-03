@@ -2,15 +2,22 @@ mod cmd;
 mod config;
 mod core;
 mod enhance;
+mod error;
 mod feat;
+mod module;
 mod utils;
-use crate::core::hotkey;
-use crate::utils::{resolve, resolve::resolve_scheme, server};
+use crate::{
+    core::hotkey,
+    utils::{resolve, resolve::resolve_scheme, server},
+};
 use config::Config;
+use std::sync::{Mutex, Once};
+use tauri::AppHandle;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
-use std::sync::{Mutex, Once};
-use tauri::{AppHandle, Manager};
+use utils::logging::Type;
 
 /// A global singleton handle to the application.
 pub struct AppHandleManager {
@@ -54,7 +61,7 @@ impl AppHandleManager {
             let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
         }
     }
-    
+
     pub fn set_activation_policy_accessory(&self) {
         #[cfg(target_os = "macos")]
         {
@@ -63,7 +70,7 @@ impl AppHandleManager {
             let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
     }
-    
+
     pub fn set_activation_policy_prohibited(&self) {
         #[cfg(target_os = "macos")]
         {
@@ -74,6 +81,7 @@ impl AppHandleManager {
     }
 }
 
+#[allow(clippy::panic)]
 pub fn run() {
     // 单例检测
     let app_exists: bool = tauri::async_runtime::block_on(async move {
@@ -93,7 +101,6 @@ pub fn run() {
 
     #[cfg(debug_assertions)]
     let devtools = tauri_plugin_devtools::init();
-
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(
@@ -105,7 +112,6 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
@@ -115,13 +121,13 @@ pub fn run() {
             #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                log_err!(app.deep_link().register_all());
+                logging_error!(Type::System, true, app.deep_link().register_all());
             }
 
             app.deep_link().on_open_url(|event| {
                 tauri::async_runtime::spawn(async move {
                     if let Some(url) = event.urls().first() {
-                        log_err!(resolve_scheme(url.to_string()).await);
+                        logging_error!(Type::Setup, true, resolve_scheme(url.to_string()).await);
                     }
                 });
             });
@@ -144,6 +150,16 @@ pub fn run() {
             cmd::get_network_interfaces,
             cmd::restart_core,
             cmd::restart_app,
+            // 添加新的命令
+            cmd::get_running_mode,
+            cmd::get_app_uptime,
+            cmd::get_auto_launch_status,
+            cmd::is_admin,
+            // service 管理
+            cmd::install_service,
+            cmd::uninstall_service,
+            cmd::reinstall_service,
+            cmd::repair_service,
             // clash
             cmd::get_clash_info,
             cmd::patch_clash_config,
@@ -155,6 +171,12 @@ pub fn run() {
             cmd::get_runtime_logs,
             cmd::invoke_uwp_tool,
             cmd::copy_clash_env,
+            cmd::get_proxies,
+            cmd::get_providers_proxies,
+            cmd::save_dns_config,
+            cmd::apply_dns_config,
+            cmd::check_dns_config_exists,
+            cmd::get_dns_config_content,
             // verge
             cmd::get_verge_config,
             cmd::patch_verge_config,
@@ -189,11 +211,26 @@ pub fn run() {
             cmd::list_webdav_backup,
             cmd::delete_webdav_backup,
             cmd::restore_webdav_backup,
+            // export diagnostic info for issue reporting
+            cmd::export_diagnostic_info,
+            // get system info for display
+            cmd::get_system_info,
+            // media unlock checker
+            cmd::get_unlock_items,
+            cmd::check_media_unlock,
+            // light-weight model
+            cmd::entry_lightweight_mode,
         ]);
 
     #[cfg(debug_assertions)]
     {
         builder = builder.plugin(devtools);
+    }
+
+    // Macos Application Menu
+    #[cfg(target_os = "macos")]
+    {
+        // Temporary Achived due to cannot CMD+C/V/A
     }
 
     let app = builder
@@ -203,11 +240,21 @@ pub fn run() {
     app.run(|app_handle, e| match e {
         tauri::RunEvent::Ready | tauri::RunEvent::Resumed => {
             AppHandleManager::global().init(app_handle.clone());
-            let main_window = AppHandleManager::global().get_handle().get_webview_window("main").unwrap();
-            let _ = main_window.set_title("Clash Verge");
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(window) = AppHandleManager::global()
+                    .get_handle()
+                    .get_webview_window("main")
+                {
+                    let _ = window.set_title("Clash Verge");
+                }
+            }
         }
         #[cfg(target_os = "macos")]
-        tauri::RunEvent::Reopen { has_visible_windows, .. } => {
+        tauri::RunEvent::Reopen {
+            has_visible_windows,
+            ..
+        } => {
             if !has_visible_windows {
                 AppHandleManager::global().set_activation_policy_regular();
             }
@@ -222,6 +269,7 @@ pub fn run() {
             if label == "main" {
                 match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
+                        #[cfg(target_os = "macos")]
                         AppHandleManager::global().set_activation_policy_accessory();
                         if core::handle::Handle::global().is_exiting() {
                             return;
@@ -234,45 +282,90 @@ pub fn run() {
                     tauri::WindowEvent::Focused(true) => {
                         #[cfg(target_os = "macos")]
                         {
-                            log_err!(hotkey::Hotkey::global().register("CMD+Q", "quit"));
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().register("CMD+Q", "quit")
+                            );
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().register("CMD+W", "hide")
+                            );
                         }
 
                         #[cfg(not(target_os = "macos"))]
                         {
-                            log_err!(hotkey::Hotkey::global().register("Control+Q", "quit"));
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().register("Control+Q", "quit")
+                            );
                         };
-                        {   
-                            let is_enable_global_hotkey = Config::verge().latest().enable_global_hotkey.unwrap_or(true);
+                        {
+                            let is_enable_global_hotkey = Config::verge()
+                                .latest()
+                                .enable_global_hotkey
+                                .unwrap_or(true);
                             if !is_enable_global_hotkey {
-                                log_err!(hotkey::Hotkey::global().init())
+                                logging_error!(Type::Hotkey, true, hotkey::Hotkey::global().init())
                             }
                         }
                     }
                     tauri::WindowEvent::Focused(false) => {
                         #[cfg(target_os = "macos")]
                         {
-                            log_err!(hotkey::Hotkey::global().unregister("CMD+Q"));
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().unregister("CMD+Q")
+                            );
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().unregister("CMD+W")
+                            );
                         }
                         #[cfg(not(target_os = "macos"))]
                         {
-                            log_err!(hotkey::Hotkey::global().unregister("Control+Q"));
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().unregister("Control+Q")
+                            );
                         };
-                        {   
-                            let is_enable_global_hotkey = Config::verge().latest().enable_global_hotkey.unwrap_or(true);
+                        {
+                            let is_enable_global_hotkey = Config::verge()
+                                .latest()
+                                .enable_global_hotkey
+                                .unwrap_or(true);
                             if !is_enable_global_hotkey {
-                                log_err!(hotkey::Hotkey::global().reset())
+                                logging_error!(Type::Hotkey, true, hotkey::Hotkey::global().reset())
                             }
                         }
                     }
                     tauri::WindowEvent::Destroyed => {
                         #[cfg(target_os = "macos")]
                         {
-                            log_err!(hotkey::Hotkey::global().unregister("CMD+Q"));
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().unregister("CMD+Q")
+                            );
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().unregister("CMD+W")
+                            );
                         }
 
                         #[cfg(not(target_os = "macos"))]
                         {
-                            log_err!(hotkey::Hotkey::global().unregister("Control+Q"));
+                            logging_error!(
+                                Type::Hotkey,
+                                true,
+                                hotkey::Hotkey::global().unregister("Control+Q")
+                            );
                         };
                     }
                     _ => {}

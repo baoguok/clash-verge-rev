@@ -1,9 +1,9 @@
 use super::{Draft, IClashTemp, IProfiles, IRuntime, IVerge};
 use crate::{
     config::PrfItem,
-    enhance,
-    utils::{dirs, help},
     core::{handle, CoreManager},
+    enhance, logging,
+    utils::{dirs, help, logging::Type},
 };
 use anyhow::{anyhow, Result};
 use once_cell::sync::OnceCell;
@@ -66,32 +66,41 @@ impl Config {
             let script_item = PrfItem::from_script(Some("Script".to_string()))?;
             Self::profiles().data().append_item(script_item.clone())?;
         }
-
         // 生成运行时配置
-        crate::log_err!(Self::generate().await);
+        if let Err(err) = Self::generate().await {
+            logging!(error, Type::Config, true, "生成运行时配置失败: {}", err);
+        } else {
+            logging!(info, Type::Config, true, "生成运行时配置成功");
+        }
 
         // 生成运行时配置文件并验证
         let config_result = Self::generate_file(ConfigType::Run);
 
-        let validation_result = if let Ok(_) = config_result {
+        let validation_result = if config_result.is_ok() {
             // 验证配置文件
-            println!("[首次启动] 开始验证配置");
-            
+            logging!(info, Type::Config, true, "开始验证配置");
+
             match CoreManager::global().validate_config().await {
                 Ok((is_valid, error_msg)) => {
                     if !is_valid {
-                        println!("[首次启动] 配置验证失败，使用默认最小配置启动: {}", error_msg);
+                        logging!(
+                            warn,
+                            Type::Config,
+                            true,
+                            "[首次启动] 配置验证失败，使用默认最小配置启动: {}",
+                            error_msg
+                        );
                         CoreManager::global()
                             .use_default_config("config_validate::boot_error", &error_msg)
                             .await?;
                         Some(("config_validate::boot_error", error_msg))
                     } else {
-                        println!("[首次启动] 配置验证成功");
+                        logging!(info, Type::Config, true, "配置验证成功");
                         Some(("config_validate::success", String::new()))
                     }
                 }
                 Err(err) => {
-                    println!("[首次启动] 验证进程执行失败: {}", err);
+                    logging!(warn, Type::Config, true, "验证进程执行失败: {}", err);
                     CoreManager::global()
                         .use_default_config("config_validate::process_terminated", "")
                         .await?;
@@ -99,12 +108,9 @@ impl Config {
                 }
             }
         } else {
-            println!("[首次启动] 生成配置文件失败，使用默认配置");
+            logging!(warn, Type::Config, true, "生成配置文件失败，使用默认配置");
             CoreManager::global()
-                .use_default_config(
-                    "config_validate::error",
-                    "",
-                )
+                .use_default_config("config_validate::error", "")
                 .await?;
             Some(("config_validate::error", String::new()))
         };

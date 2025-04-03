@@ -5,6 +5,8 @@ import {
   ListItemButton,
   Typography,
   styled,
+  Chip,
+  Tooltip,
 } from "@mui/material";
 import {
   ExpandLessRounded,
@@ -21,17 +23,19 @@ import { useThemeMode } from "@/services/states";
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { downloadIconCache } from "@/services/cmds";
+import { useTranslation } from "react-i18next";
 
 interface RenderProps {
   item: IRenderItem;
   indent: boolean;
-  onLocation: (group: IProxyGroupItem) => void;
+  onLocation: (group: IRenderItem["group"]) => void;
   onCheckAll: (groupName: string) => void;
   onHeadState: (groupName: string, patch: Partial<HeadState>) => void;
-  onChangeProxy: (group: IProxyGroupItem, proxy: IProxyItem) => void;
+  onChangeProxy: (group: IRenderItem["group"], proxy: IRenderItem["proxy"] & { name: string }) => void;
 }
 
 export const ProxyRender = (props: RenderProps) => {
+  const { t } = useTranslation();
   const { indent, item, onLocation, onCheckAll, onHeadState, onChangeProxy } =
     props;
   const { type, group, headState, proxy, proxyCol } = item;
@@ -66,8 +70,8 @@ export const ProxyRender = (props: RenderProps) => {
         style={{
           background: itembackgroundcolor,
           height: "100%",
-          margin: "10px 16px",
-          borderRadius: "10px",
+          margin: "8px 8px",
+          borderRadius: "8px",
         }}
         onClick={() => onHeadState(group.name, { open: !headState?.open })}
       >
@@ -123,7 +127,20 @@ export const ProxyRender = (props: RenderProps) => {
             },
           }}
         />
-        {headState?.open ? <ExpandLessRounded /> : <ExpandMoreRounded />}
+        <Box sx={{ display: "flex", alignItems: "center" }}>
+          <Tooltip title={t("Proxy Count")} arrow>
+            <Chip 
+              size="small" 
+              label={`${group.all.length}`} 
+              sx={{ 
+                mr: 1, 
+                backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                color: (theme) => theme.palette.primary.main,
+              }} 
+            />
+          </Tooltip>
+          {headState?.open ? <ExpandLessRounded /> : <ExpandMoreRounded />}
+        </Box>
       </ListItemButton>
     );
   }
@@ -131,7 +148,7 @@ export const ProxyRender = (props: RenderProps) => {
   if (type === 1) {
     return (
       <ProxyHead
-        sx={{ pl: 3, pr: 3.5, mt: indent ? 1 : 0.5, mb: 1 }}
+        sx={{ pl: 2, pr: 3, mt: indent ? 1 : 0.5, mb: 1 }}
         url={group.testUrl}
         groupName={group.name}
         headState={headState!}
@@ -191,10 +208,10 @@ export const ProxyRender = (props: RenderProps) => {
         sx={{
           height: 56,
           display: "grid",
-          gap: 1.5,
-          pl: 3,
-          pr: 3.5,
-          pb: 1.25,
+          gap: 1,
+          pl: 2,
+          pr: 2,
+          pb: 1,
           gridTemplateColumns: `repeat(${item.col! || 2}, 1fr)`,
         }}
       >

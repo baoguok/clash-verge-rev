@@ -1,7 +1,10 @@
-use crate::config::Config;
-use crate::core::{clash_api, handle, tray, CoreManager};
-use crate::log_err;
-use crate::utils::resolve;
+use crate::{
+    config::Config,
+    core::{handle, tray, CoreManager},
+    logging_error,
+    module::mihomo::MihomoManager,
+    utils::{logging::Type, resolve},
+};
 use serde_yaml::{Mapping, Value};
 use tauri::Manager;
 
@@ -25,12 +28,31 @@ pub fn restart_clash_core() {
 pub fn restart_app() {
     tauri::async_runtime::spawn_blocking(|| {
         tauri::async_runtime::block_on(async {
-            log_err!(CoreManager::global().stop_core().await);
+            logging_error!(Type::Core, true, CoreManager::global().stop_core().await);
+            resolve::resolve_reset_async().await;
+            let app_handle = handle::Handle::global().app_handle().unwrap();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            tauri::process::restart(&app_handle.env());
         });
-        resolve::resolve_reset();
-        let app_handle = handle::Handle::global().app_handle().unwrap();
-        std::thread::sleep(std::time::Duration::from_secs(1));
-        tauri::process::restart(&app_handle.env());
+    });
+}
+
+fn after_change_clash_mode() {
+    tauri::async_runtime::spawn(async {
+        match MihomoManager::global().get_connections().await {
+            Ok(connections) => {
+                if let Some(connections_array) = connections["connections"].as_array() {
+                    for connection in connections_array {
+                        if let Some(id) = connection["id"].as_str() {
+                            let _ = MihomoManager::global().delete_connection(id).await;
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                log::error!(target: "app", "Failed to get connections: {}", err);
+            }
+        }
     });
 }
 
@@ -38,21 +60,32 @@ pub fn restart_app() {
 pub fn change_clash_mode(mode: String) {
     let mut mapping = Mapping::new();
     mapping.insert(Value::from("mode"), mode.clone().into());
+    // Convert YAML mapping to JSON Value
+    let json_value = serde_json::json!({
+        "mode": mode
+    });
     tauri::async_runtime::spawn(async move {
         log::debug!(target: "app", "change clash mode to {mode}");
-
-        match clash_api::patch_configs(&mapping).await {
+        match MihomoManager::global().patch_configs(json_value).await {
             Ok(_) => {
                 // 更新订阅
                 Config::clash().data().patch_config(mapping);
 
                 if Config::clash().data().save_config().is_ok() {
                     handle::Handle::refresh_clash();
-                    log_err!(tray::Tray::global().update_menu());
-                    log_err!(tray::Tray::global().update_icon(None));
+                    logging_error!(Type::Tray, true, tray::Tray::global().update_menu());
+                    logging_error!(Type::Tray, true, tray::Tray::global().update_icon(None));
+                }
+
+                let is_auto_close_connection = Config::verge()
+                    .data()
+                    .auto_close_connection
+                    .unwrap_or(false);
+                if is_auto_close_connection {
+                    after_change_clash_mode();
                 }
             }
-            Err(err) => log::error!(target: "app", "{err}"),
+            Err(err) => println!("{err}"),
         }
     });
 }

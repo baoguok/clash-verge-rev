@@ -1,10 +1,12 @@
-use crate::config::{Config, IVerge};
-use crate::core::{handle, hotkey, sysopt, tray, CoreManager};
-use crate::log_err;
-use crate::utils::resolve;
+use crate::{
+    config::{Config, IVerge},
+    core::{handle, hotkey, sysopt, tray, CoreManager},
+    logging_error,
+    module::lightweight,
+    utils::logging::Type,
+};
 use anyhow::Result;
 use serde_yaml::Mapping;
-use tauri::Manager;
 
 /// Patch Clash configuration
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
@@ -17,8 +19,8 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             CoreManager::global().restart_core().await?;
         } else {
             if patch.get("mode").is_some() {
-                log_err!(tray::Tray::global().update_menu());
-                log_err!(tray::Tray::global().update_icon(None));
+                logging_error!(Type::Tray, true, tray::Tray::global().update_menu());
+                logging_error!(Type::Tray, true, tray::Tray::global().update_icon(None));
             }
             Config::runtime().latest().patch_config(patch);
             CoreManager::global().update_config().await?;
@@ -39,6 +41,23 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
     }
 }
 
+// Define update flags as bitflags for better performance
+#[derive(Clone, Copy)]
+enum UpdateFlags {
+    None = 0,
+    RestartCore = 1 << 0,
+    ClashConfig = 1 << 1,
+    VergeConfig = 1 << 2,
+    Launch = 1 << 3,
+    SysProxy = 1 << 4,
+    SystrayIcon = 1 << 5,
+    Hotkey = 1 << 6,
+    SystrayMenu = 1 << 7,
+    SystrayTooltip = 1 << 8,
+    SystrayClickBehavior = 1 << 9,
+    LighteWeight = 1 << 10,
+}
+
 /// Patch Verge configuration
 pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
     Config::verge().draft().patch_config(patch.clone());
@@ -51,7 +70,6 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
     let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
     let mixed_port = patch.verge_mixed_port;
-    let lite_mode = patch.enable_lite_mode;
     #[cfg(target_os = "macos")]
     let tray_icon = patch.tray_icon;
     #[cfg(not(target_os = "macos"))]
@@ -72,35 +90,31 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
     let http_enabled = patch.verge_http_enabled;
     let http_port = patch.verge_port;
     let enable_tray_speed = patch.enable_tray_speed;
+    let enable_tray_icon = patch.enable_tray_icon;
     let enable_global_hotkey = patch.enable_global_hotkey;
-
+    let tray_event = patch.tray_event;
+    let home_cards = patch.home_cards.clone();
+    let enable_auto_light_weight = patch.enable_auto_light_weight_mode;
     let res: std::result::Result<(), anyhow::Error> = {
-        let mut should_restart_core = false;
-        let mut should_update_clash_config = false;
-        let mut should_update_verge_config = false;
-        let mut should_update_launch = false;
-        let mut should_update_sysproxy = false;
-        let mut should_update_systray_icon = false;
-        let mut should_update_hotkey = false;
-        let mut should_update_systray_menu = false;
-        let mut should_update_systray_tooltip = false;
+        // Initialize with no flags set
+        let mut update_flags: i32 = UpdateFlags::None as i32;
 
         if tun_mode.is_some() {
-            should_update_clash_config = true;
-            should_update_systray_menu = true;
-            should_update_systray_tooltip = true;
-            should_update_systray_icon = true;
+            update_flags |= UpdateFlags::ClashConfig as i32;
+            update_flags |= UpdateFlags::SystrayMenu as i32;
+            update_flags |= UpdateFlags::SystrayTooltip as i32;
+            update_flags |= UpdateFlags::SystrayIcon as i32;
         }
-        if enable_global_hotkey.is_some() {
-            should_update_verge_config = true;
+        if enable_global_hotkey.is_some() || home_cards.is_some() {
+            update_flags |= UpdateFlags::VergeConfig as i32;
         }
         #[cfg(not(target_os = "windows"))]
         if redir_enabled.is_some() || redir_port.is_some() {
-            should_restart_core = true;
+            update_flags |= UpdateFlags::RestartCore as i32;
         }
         #[cfg(target_os = "linux")]
         if tproxy_enabled.is_some() || tproxy_port.is_some() {
-            should_restart_core = true;
+            update_flags |= UpdateFlags::RestartCore as i32;
         }
         if socks_enabled.is_some()
             || http_enabled.is_some()
@@ -108,91 +122,88 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
             || http_port.is_some()
             || mixed_port.is_some()
         {
-            should_restart_core = true;
+            update_flags |= UpdateFlags::RestartCore as i32;
         }
         if auto_launch.is_some() {
-            should_update_launch = true;
+            update_flags |= UpdateFlags::Launch as i32;
         }
 
         if system_proxy.is_some() {
-            should_update_sysproxy = true;
-            should_update_systray_menu = true;
-            should_update_systray_tooltip = true;
-            should_update_systray_icon = true;
+            update_flags |= UpdateFlags::SysProxy as i32;
+            update_flags |= UpdateFlags::SystrayMenu as i32;
+            update_flags |= UpdateFlags::SystrayTooltip as i32;
+            update_flags |= UpdateFlags::SystrayIcon as i32;
         }
 
         if proxy_bypass.is_some() || pac_content.is_some() || pac.is_some() {
-            should_update_sysproxy = true;
+            update_flags |= UpdateFlags::SysProxy as i32;
         }
 
         if language.is_some() {
-            should_update_systray_menu = true;
+            update_flags |= UpdateFlags::SystrayMenu as i32;
         }
         if common_tray_icon.is_some()
             || sysproxy_tray_icon.is_some()
             || tun_tray_icon.is_some()
             || tray_icon.is_some()
+            || enable_tray_speed.is_some()
+            || enable_tray_icon.is_some()
         {
-            should_update_systray_icon = true;
+            update_flags |= UpdateFlags::SystrayIcon as i32;
         }
 
         if patch.hotkeys.is_some() {
-            should_update_hotkey = true;
-            should_update_systray_menu = true;
+            update_flags |= UpdateFlags::Hotkey as i32;
+            update_flags |= UpdateFlags::SystrayMenu as i32;
         }
 
-        if enable_tray_speed.is_some() {
-            should_update_systray_icon = true;
+        if tray_event.is_some() {
+            update_flags |= UpdateFlags::SystrayClickBehavior as i32;
         }
 
-        if should_restart_core {
+        if enable_auto_light_weight.is_some() {
+            update_flags |= UpdateFlags::LighteWeight as i32;
+        }
+
+        // Process updates based on flags
+        if (update_flags & (UpdateFlags::RestartCore as i32)) != 0 {
+            Config::generate().await?;
             CoreManager::global().restart_core().await?;
         }
-        if should_update_clash_config {
+        if (update_flags & (UpdateFlags::ClashConfig as i32)) != 0 {
             CoreManager::global().update_config().await?;
             handle::Handle::refresh_clash();
         }
-        if should_update_verge_config {
+        if (update_flags & (UpdateFlags::VergeConfig as i32)) != 0 {
             Config::verge().draft().enable_global_hotkey = enable_global_hotkey;
             handle::Handle::refresh_verge();
         }
-        if should_update_launch {
+        if (update_flags & (UpdateFlags::Launch as i32)) != 0 {
             sysopt::Sysopt::global().update_launch()?;
         }
-
-        if should_update_sysproxy {
+        if (update_flags & (UpdateFlags::SysProxy as i32)) != 0 {
             sysopt::Sysopt::global().update_sysproxy().await?;
         }
-
-        if should_update_hotkey {
+        if (update_flags & (UpdateFlags::Hotkey as i32)) != 0 {
             hotkey::Hotkey::global().update(patch.hotkeys.unwrap())?;
         }
-
-        if should_update_systray_menu {
+        if (update_flags & (UpdateFlags::SystrayMenu as i32)) != 0 {
             tray::Tray::global().update_menu()?;
         }
-
-        if should_update_systray_icon {
+        if (update_flags & (UpdateFlags::SystrayIcon as i32)) != 0 {
             tray::Tray::global().update_icon(None)?;
         }
-
-        if should_update_systray_tooltip {
+        if (update_flags & (UpdateFlags::SystrayTooltip as i32)) != 0 {
             tray::Tray::global().update_tooltip()?;
         }
-
-        // 处理轻量模式切换
-        if lite_mode.is_some() {
-            if let Some(window) = handle::Handle::global().get_window() {
-                if lite_mode.unwrap() {
-                    // 完全退出 webview 进程
-                    window.close()?; // 先关闭窗口
-                    let app_handle = handle::Handle::global().app_handle().unwrap();
-                    if let Some(webview) = app_handle.get_webview_window("main") {
-                        webview.destroy()?; // 销毁 webview 进程
-                    }
-                } else {
-                    resolve::create_window(); // 重新创建窗口
-                }
+        if (update_flags & (UpdateFlags::SystrayClickBehavior as i32)) != 0 {
+            tray::Tray::global().update_click_behavior()?;
+        }
+        if (update_flags & (UpdateFlags::LighteWeight as i32)) != 0 {
+            if enable_auto_light_weight.unwrap() {
+                lightweight::enable_auto_light_weight_mode();
+            } else {
+                lightweight::disable_auto_light_weight_mode();
             }
         }
 

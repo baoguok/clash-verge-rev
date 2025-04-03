@@ -1,7 +1,13 @@
-use crate::config::IVerge;
-use crate::utils::error;
-use crate::{config::Config, config::PrfItem, core::*, utils::init, utils::server};
-use crate::{log_err, wrap_err, AppHandleManager};
+#[cfg(target_os = "macos")]
+use crate::AppHandleManager;
+use crate::{
+    config::{Config, IVerge, PrfItem},
+    core::*,
+    logging, logging_error,
+    module::lightweight,
+    utils::{error, init, logging::Type, server},
+    wrap_err,
+};
 use anyhow::{bail, Result};
 use once_cell::sync::OnceCell;
 use percent_encoding::percent_decode_str;
@@ -9,10 +15,9 @@ use serde_yaml::Mapping;
 use std::net::TcpListener;
 use tauri::{App, Manager};
 
-use url::Url;
+use tauri::Url;
 //#[cfg(not(target_os = "linux"))]
 // use window_shadows::set_shadow;
-use tauri_plugin_notification::NotificationExt;
 
 pub static VERSION: OnceCell<String> = OnceCell::new();
 
@@ -46,102 +51,128 @@ pub async fn resolve_setup(app: &mut App) {
     handle::Handle::global().init(app.app_handle());
     VERSION.get_or_init(|| version.clone());
 
-    log_err!(init::init_config());
-    log_err!(init::init_resources());
-    log_err!(init::init_scheme());
-    log_err!(init::startup_script().await);
+    logging_error!(Type::Config, true, init::init_config());
+    logging_error!(Type::Setup, true, init::init_resources());
+    logging_error!(Type::Setup, true, init::init_scheme());
+    logging_error!(Type::Setup, true, init::startup_script().await);
     // 处理随机端口
-    log_err!(resolve_random_port_config());
+    logging_error!(Type::System, true, resolve_random_port_config());
     // 启动核心
-    log::trace!(target:"app", "init config");
-    log_err!(Config::init_config().await);
+    logging!(trace, Type::Config, true, "Initial config");
+    logging_error!(Type::Config, true, Config::init_config().await);
 
-    if service::check_service().await.is_err() {
-        match service::reinstall_service().await {
-            Ok(_) => {
-                log::info!(target:"app", "install service susccess.");
-                #[cfg(not(target_os = "macos"))]
-                std::thread::sleep(std::time::Duration::from_millis(1000));
-                #[cfg(target_os = "macos")]
-                {
-                    let mut service_runing = false;
-                    for _ in 0..40 {
-                        if service::check_service().await.is_ok() {
-                            service_runing = true;
-                            break;
-                        } else {
-                            log::warn!(target: "app", "service not runing, sleep 500ms and check again.");
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                    }
-                    if !service_runing {
-                        log::error!(target: "app", "service not runing. exit");
-                        app.app_handle().exit(-2);
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!(target: "app", "{e:?}");
-                app.app_handle().exit(-1);
-            }
-        }
-    }
+    // if service::check_service().await.is_err() {
+    //     match service::install_service().await {
+    //         Ok(_) => {
+    //             log::info!(target:"app", "install service susccess.");
+    //             #[cfg(not(target_os = "macos"))]
+    //             std::thread::sleep(std::time::Duration::from_millis(1000));
+    //             #[cfg(target_os = "macos")]
+    //             {
+    //                 let mut service_runing = false;
+    //                 for _ in 0..40 {
+    //                     if service::check_service().await.is_ok() {
+    //                         service_runing = true;
+    //                         break;
+    //                     } else {
+    //                         log::warn!(target: "app", "service not runing, sleep 500ms and check again.");
+    //                         std::thread::sleep(std::time::Duration::from_millis(500));
+    //                     }
+    //                 }
+    //                 if !service_runing {
+    //                     log::warn!(target: "app", "service not running, will fallback to user mode");
+    //                 }
+    //             }
+    //         }
+    //         Err(e) => {
+    //             log::warn!(target: "app", "failed to install service: {e:?}, will fallback to user mode");
+    //         }
+    //     }
+    // }
 
-    log::trace!(target: "app", "launch core");
-    log_err!(CoreManager::global().init().await);
+    logging!(trace, Type::Core, "Starting CoreManager");
+    logging_error!(Type::Core, true, CoreManager::global().init().await);
 
     // setup a simple http server for singleton
     log::trace!(target: "app", "launch embed server");
     server::embed_server();
 
-    log::trace!(target: "app", "init system tray");
-    log_err!(tray::Tray::global().init());
-    log_err!(tray::Tray::global().create_systray());
+    log::trace!(target: "app", "Initial system tray");
+    logging_error!(Type::Tray, true, tray::Tray::global().init());
+    logging_error!(Type::Tray, true, tray::Tray::global().create_systray(app));
 
-    log_err!(sysopt::Sysopt::global().update_sysproxy().await);
-    log_err!(sysopt::Sysopt::global().init_guard_sysproxy());
+    logging_error!(
+        Type::System,
+        true,
+        sysopt::Sysopt::global().update_sysproxy().await
+    );
+    logging_error!(
+        Type::System,
+        true,
+        sysopt::Sysopt::global().init_guard_sysproxy()
+    );
 
     // 初始化热键
-    log::trace!(target: "app", "init hotkeys");
-    log_err!(hotkey::Hotkey::global().init());
+    logging!(trace, Type::System, true, "Initial hotkeys");
+    logging_error!(Type::System, true, hotkey::Hotkey::global().init());
 
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
         create_window();
     }
 
-    log_err!(tray::Tray::global().update_part());
-    log_err!(timer::Timer::global().init());
+    logging_error!(Type::Tray, true, tray::Tray::global().update_part());
+    logging_error!(Type::System, true, timer::Timer::global().init());
+
+    let enable_auto_light_weight_mode = { Config::verge().data().enable_auto_light_weight_mode };
+    if enable_auto_light_weight_mode.unwrap_or(false) {
+        lightweight::enable_auto_light_weight_mode();
+    }
 }
 
-/// reset system proxy
-pub fn resolve_reset() {
-    tauri::async_runtime::block_on(async move {
-        #[cfg(target_os = "macos")]
-        tray::Tray::global().unsubscribe_traffic();
+/// reset system proxy (异步版)
+pub async fn resolve_reset_async() {
+    #[cfg(target_os = "macos")]
+    logging!(info, Type::Tray, true, "Unsubscribing from traffic updates");
+    #[cfg(target_os = "macos")]
+    tray::Tray::global().unsubscribe_traffic();
 
-        log_err!(sysopt::Sysopt::global().reset_sysproxy().await);
-        log_err!(CoreManager::global().stop_core().await);
-        #[cfg(target_os = "macos")]
+    logging_error!(
+        Type::System,
+        true,
+        sysopt::Sysopt::global().reset_sysproxy().await
+    );
+    logging_error!(Type::Core, true, CoreManager::global().stop_core().await);
+    #[cfg(target_os = "macos")]
+    {
+        logging!(info, Type::System, true, "Restoring system DNS settings");
         restore_public_dns().await;
-    });
+    }
 }
 
 /// create main window
 pub fn create_window() {
-    println!("Starting to create window");
-    log::info!(target: "app", "Starting to create window");
+    logging!(info, Type::Window, true, "Creating window");
 
     let app_handle = handle::Handle::global().app_handle().unwrap();
+    #[cfg(target_os = "macos")]
     AppHandleManager::global().set_activation_policy_regular();
 
     if let Some(window) = handle::Handle::global().get_window() {
-        println!("Found existing window, trying to show it");
-        log::info!(target: "app", "Found existing window, trying to show it");
+        logging!(
+            info,
+            Type::Window,
+            true,
+            "Found existing window, attempting to restore visibility"
+        );
 
         if window.is_minimized().unwrap_or(false) {
-            println!("Window is minimized, unminimizing");
-            log::info!(target: "app", "Window is minimized, unminimizing");
+            logging!(
+                info,
+                Type::Window,
+                true,
+                "Window is minimized, restoring window state"
+            );
             let _ = window.unminimize();
         }
         let _ = window.show();
@@ -149,8 +180,7 @@ pub fn create_window() {
         return;
     }
 
-    println!("Creating new window");
-    log::info!(target: "app", "Creating new window");
+    logging!(info, Type::Window, true, "Creating new application window");
 
     #[cfg(target_os = "windows")]
     let window = tauri::WebviewWindowBuilder::new(
@@ -196,25 +226,50 @@ pub fn create_window() {
 
     match window {
         Ok(window) => {
-            println!("Window created successfully, attempting to show");
-            log::info!(target: "app", "Window created successfully, attempting to show");
+            logging!(
+                info,
+                Type::Window,
+                true,
+                "Window created successfully, making window visible"
+            );
             let _ = window.show();
             let _ = window.set_focus();
-            
+
             // 设置窗口状态监控，实时保存窗口位置和大小
             crate::feat::setup_window_state_monitor(&app_handle);
+
+            // 标记前端UI已准备就绪，向前端发送启动完成事件
+            let app_handle_clone = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
+
+                logging!(
+                    info,
+                    Type::Window,
+                    true,
+                    "标记前端UI已准备就绪，开始处理启动错误队列"
+                );
+                handle::Handle::global().mark_startup_completed();
+
+                if let Some(window) = app_handle_clone.get_webview_window("main") {
+                    let _ = window.emit("verge://startup-completed", ());
+                }
+            });
         }
         Err(e) => {
-            println!("Failed to create window: {:?}", e);
-            log::error!(target: "app", "Failed to create window: {:?}", e);
+            logging!(
+                error,
+                Type::Window,
+                true,
+                "Failed to create window: {:?}",
+                e
+            );
         }
     }
 }
 
 pub async fn resolve_scheme(param: String) -> Result<()> {
     log::info!(target:"app", "received deep link: {}", param);
-
-    let app_handle = handle::Handle::global().app_handle().unwrap();
 
     let param_str = if param.starts_with("[") && param.len() > 4 {
         param
@@ -255,24 +310,9 @@ pub async fn resolve_scheme(param: String) -> Result<()> {
                         let uid = item.uid.clone().unwrap();
                         let _ = wrap_err!(Config::profiles().data().append_item(item));
                         handle::Handle::notice_message("import_sub_url::ok", uid);
-
-                        app_handle
-                            .notification()
-                            .builder()
-                            .title("Clash Verge")
-                            .body("Import profile success")
-                            .show()
-                            .unwrap();
                     }
                     Err(e) => {
                         handle::Handle::notice_message("import_sub_url::error", e.to_string());
-                        app_handle
-                            .notification()
-                            .builder()
-                            .title("Clash Verge")
-                            .body(format!("Import profile failed: {e}"))
-                            .show()
-                            .unwrap();
                     }
                 }
             }
@@ -314,8 +354,7 @@ fn resolve_random_port_config() -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub async fn set_public_dns(dns_server: String) {
-    use crate::core::handle;
-    use crate::utils::dirs;
+    use crate::{core::handle, utils::dirs};
     use tauri_plugin_shell::ShellExt;
     let app_handle = handle::Handle::global().app_handle().unwrap();
 
@@ -351,8 +390,7 @@ pub async fn set_public_dns(dns_server: String) {
 
 #[cfg(target_os = "macos")]
 pub async fn restore_public_dns() {
-    use crate::core::handle;
-    use crate::utils::dirs;
+    use crate::{core::handle, utils::dirs};
     use tauri_plugin_shell::ShellExt;
     let app_handle = handle::Handle::global().app_handle().unwrap();
     log::info!(target: "app", "try to unset system dns");

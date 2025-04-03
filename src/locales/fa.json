@@ -32,7 +32,7 @@
   "global": "جهانی",
   "direct": "مستقیم",
   "script": "اسکریپت",
-  "Location": "موقعیت",
+  "locate": "موقعیت",
   "Delay check": "بررسی تأخیر",
   "Sort by default": "مرتب‌سازی بر اساس پیش‌فرض",
   "Sort by delay": "مرتب‌سازی بر اساس تأخیر",
@@ -433,8 +433,8 @@
   "Global Mode": "حالت جهانی",
   "Direct Mode": "حالت مستقیم",
   "Enable Tray Speed": "فعال کردن سرعت ترای",
-  "Lite Mode": "در فارسی",
-  "Lite Mode Info": "رابط کاربری گرافیکی را ببندید و فقط هسته را در حال اجرا نگه دارید",
+  "LightWeight Mode": "در فارسی",
+  "LightWeight Mode Info": "رابط کاربری گرافیکی را ببندید و فقط هسته را در حال اجرا نگه دارید",
   "Config Validation Failed": "اعتبارسنجی پیکربندی اشتراک ناموفق بود، فایل پیکربندی را بررسی کنید، تغییرات برگشت داده شد، جزئیات خطا:",
   "Boot Config Validation Failed": "اعتبارسنجی پیکربندی هنگام راه‌اندازی ناموفق بود، پیکربندی پیش‌فرض استفاده شد، فایل پیکربندی را بررسی کنید، جزئیات خطا:",
   "Core Change Config Validation Failed": "اعتبارسنجی پیکربندی هنگام تغییر هسته ناموفق بود، پیکربندی پیش‌فرض استفاده شد، فایل پیکربندی را بررسی کنید، جزئیات خطا:",
@@ -446,5 +446,9 @@
   "Core Changed Successfully": "هسته با موفقیت تغییر کرد",
   "Failed to Change Core": "تغییر هسته ناموفق بود",
   "Verge Basic Setting": "تنظیمات پایه Verge",
-  "Verge Advanced Setting": "تنظیمات پیشرفته Verge"
+  "Verge Advanced Setting": "تنظیمات پیشرفته Verge",
+  "TUN requires Service Mode": "حالت تونل‌زنی نیاز به سرویس دارد",
+  "Install Service": "نصب سرویس",
+  "Installing Service...": "در حال نصب سرویس...",
+  "Service Administrator Prompt": "Clash Verge برای نصب مجدد سرویس سیستم به امتیازات مدیر نیاز دارد"
 }
